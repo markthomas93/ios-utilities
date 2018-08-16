@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
 	s.name             = 'FueledUtils'
-	s.version          = '1.4'
+	s.version          = '1.5'
 	s.summary          = 'A collection of utilities used at Fueled'
 
 	s.description      = <<-DESC
