@@ -58,6 +58,65 @@ class CoalescingActionSpec: QuickSpec {
 
 					expect(finalValue).toEventually(equal(2))
 				}
+				it("should using parameters from outside") {
+					var refreshCount = 0
+					var expirationDate = Date().addingTimeInterval(-1.0)
+					let refreshIfNeededAction = InputCoalescingAction<Void, Void, Never> { input in
+						SignalProducer<Void, Never> { observer, lifetime in
+							if Date().timeIntervalSince(expirationDate) < 0.3 {
+								observer.send(value: ())
+								observer.sendCompleted()
+								return
+							}
+							lifetime += SignalProducer(value: ()).delay(0.1, on: QueueScheduler.main).startWithValues { _ in
+								refreshCount += 1
+								expirationDate = Date()
+								observer.send(value: ())
+								observer.sendCompleted()
+							}
+						}
+					}
+					let loadAction = Action<Int, Int, Never> { input in
+						SignalProducer { observer, lifetime in
+							lifetime += SignalProducer(value: ()).delay(TimeInterval(input) / 10.0, on: QueueScheduler.main).startWithValues { _ in
+								observer.send(value: input + 1)
+								observer.sendCompleted()
+							}
+						}
+					}
+
+					refreshIfNeededAction.apply()
+						.flatMap(.latest) {
+							loadAction.apply(3)
+						}.ignoreError()
+							.startWithValues { input in
+								refreshIfNeededAction.apply()
+									.flatMap(.latest) {
+										loadAction.apply(input)
+									}
+									.ignoreError()
+									.startWithValues { input in
+										expect(input) == 5
+									}
+							}
+
+					refreshIfNeededAction.apply()
+						.flatMap(.latest) {
+							loadAction.apply(6)
+						}.ignoreError()
+							.startWithValues { input in
+								refreshIfNeededAction.apply()
+									.flatMap(.latest) {
+										loadAction.apply(input)
+									}
+									.ignoreError()
+									.startWithValues { input in
+										expect(input) == 8
+									}
+							}
+
+					expect(refreshCount).toEventually(equal(2), timeout: 2.0)
+				}
 			}
 			describe("apply.dispose()") {
 				it("should dispose of all created signal producers") {
